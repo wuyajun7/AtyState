@@ -27,13 +27,7 @@ import java.util.Map;
 public class AtyStateUtil {
 
     private static final String TAG = "StateUtil";
-    private static final String SPLIT_KEY = "=-=";
     private static final String SAVED_ATY_S = "SAVED_ATY_S";//目标Activity列表|参数
-
-    private Intent mIntent;
-
-    private String mSavedAtyJson;
-    private LinkedHashMap<String, String> mSavedAtyList;
 
     private AtyStateUtil() {
     }
@@ -54,12 +48,16 @@ public class AtyStateUtil {
      * @return
      */
     public static ArrayList sortMap(Map oldMap) {
-        ArrayList<Map.Entry<String, String>> list = new ArrayList<>(oldMap.entrySet());
-        Collections.sort(list, new Comparator<Map.Entry<String, String>>() {
+        ArrayList<Map.Entry<String, CacheInfo>> list = new ArrayList<>(oldMap.entrySet());
+        Collections.sort(list, new Comparator<Map.Entry<String, CacheInfo>>() {
 
             @Override
-            public int compare(Map.Entry<String, String> arg0, Map.Entry<String, String> arg1) {
-                return arg0.getValue().compareTo(arg1.getValue());
+            public int compare(Map.Entry<String, CacheInfo> arg0, Map.Entry<String, CacheInfo> arg1) {
+                if (arg0.getValue() != null && arg1.getValue() != null) {
+                    return arg0.getValue().getId().compareTo(arg1.getValue().getId());
+                } else {
+                    return 1;
+                }
             }
         });
         return list;
@@ -89,69 +87,69 @@ public class AtyStateUtil {
      */
     public void jumpSavedActivity(final Activity activity) {
         try {
-            mSavedAtyJson = NNApplication.asp.read(SAVED_ATY_S, "");
+            String mSavedAtyJson = NNApplication.asp.read(SAVED_ATY_S, "");
             if (!TextUtils.isEmpty(mSavedAtyJson)) {
                 CacheInfo cacheInfo = JSONObject.parseObject(mSavedAtyJson, CacheInfo.class);
-
                 if (cacheInfo != null) {
                     if (!checkCacheTime(cacheInfo.lastTime) && !TextUtils.isEmpty(cacheInfo.cacheData)) {
-                        mSavedAtyList = JSON.parseObject(cacheInfo.cacheData, new TypeReference<LinkedHashMap<String, String>>() {
-                        }, Feature.OrderedField);
+                        final LinkedHashMap<String, CacheInfo> mSavedAtyList = JSON.parseObject(cacheInfo.cacheData,
+                                new TypeReference<LinkedHashMap<String, CacheInfo>>() {
+                                }, Feature.OrderedField);
+
                         new Handler().postDelayed(new Runnable() {
                             @Override
                             public void run() {
+                                ArrayList<Map.Entry<String, CacheInfo>> list = sortMap(mSavedAtyList);
+
+                                Intent intent;
                                 String targetAty;
                                 String targetAtyParamJson;
-                                Map<String, Object> targetAtyParam = null;
                                 Class targetClass;
+                                Map<String, Object> targetAtyParam;
 
-                                ArrayList<Map.Entry<String, String>> list = sortMap(mSavedAtyList);
-                                Map.Entry<String, String> item;
-                                for (int i = 0; i < list.size(); i++) {
-                                    item = list.get(i);
-
+                                for (Map.Entry<String, CacheInfo> item : list) {
                                     targetAty = item.getKey();
-                                    targetAtyParamJson = item.getValue();
-                                    if (!TextUtils.isEmpty(targetAtyParamJson)) {
-                                        String[] params = targetAtyParamJson.split(SPLIT_KEY);
-                                        if (params != null && params.length > 1) {
-                                            targetAtyParamJson = params[1];
-                                            targetAtyParam = JSON.parseObject(targetAtyParamJson);
-                                        }
-                                    }
+                                    targetAtyParamJson = item.getValue().getCacheData();
 
-                                    if (targetAty != null) {
+                                    if (!TextUtils.isEmpty(targetAty)) {
                                         try {
                                             if (!NNMainAty.class.getCanonicalName().equals(targetAty)) {
                                                 targetClass = Class.forName(targetAty);
-                                                mIntent = new Intent(activity, targetClass);
-                                                if (targetAtyParam != null) {//目标Activity 参数不为空则设置参数
-                                                    for (Map.Entry<String, Object> entry : targetAtyParam.entrySet()) {
-                                                        setIntent(mIntent, entry);
+                                                intent = new Intent(activity, targetClass);
+
+                                                if (!TextUtils.isEmpty(targetAtyParamJson)) {
+                                                    targetAtyParam = JSON.parseObject(targetAtyParamJson);
+
+                                                    if (targetAtyParam != null) {//目标Activity 参数不为空则设置参数
+                                                        for (Map.Entry<String, Object> entry : targetAtyParam.entrySet()) {
+                                                            setIntent(intent, entry);
+                                                        }
                                                     }
                                                 }
-                                                activity.startActivity(mIntent);
+                                                activity.startActivity(intent);
                                             }
                                         } catch (Exception e) {
                                             e.printStackTrace();
                                         }
                                     }
                                 }
+                                //执行完毕 - 清除数据
                                 NNApplication.asp.write(SAVED_ATY_S, "");
                             }
                         }, 500);
-                    } else {//数据过期
+                    } else {//数据过期 - 清除数据
                         NNApplication.asp.write(SAVED_ATY_S, "");
                     }
                 }
             }
         } catch (Exception e) {
             e.printStackTrace();
+            //异常 - 清除数据
             NNApplication.asp.write(SAVED_ATY_S, "");
         }
     }
 
-    private LinkedHashMap<String, String> mSaveAtyList;
+    private LinkedHashMap<String, CacheInfo> mSaveAtyList;
 
     /**
      * 每个Activity onSaveInstanceState 时 保存目标 Activity
@@ -164,17 +162,21 @@ public class AtyStateUtil {
         if (!TextUtils.isEmpty(allAtyJson)) {
             CacheInfo cacheInfo = JSONObject.parseObject(allAtyJson, CacheInfo.class);
             if (cacheInfo != null && !TextUtils.isEmpty(cacheInfo.cacheData)) {
-                mSaveAtyList = JSON.parseObject(cacheInfo.cacheData, new TypeReference<LinkedHashMap<String, String>>() {
+                mSaveAtyList = JSON.parseObject(cacheInfo.cacheData, new TypeReference<LinkedHashMap<String, CacheInfo>>() {
                 }, Feature.OrderedField);
             }
         }
 
         if (mSaveAtyList == null) {
             mSaveAtyList = new LinkedHashMap<>();
-            mSaveAtyList.put(targetAty, mSaveAtyList.size() + SPLIT_KEY + (targetAtyParam == null ? "" : targetAtyParam));
+            mSaveAtyList.put(targetAty, new CacheInfo(
+                    String.valueOf(mSaveAtyList.size()),
+                    TextUtils.isEmpty(targetAtyParam) ? "" : targetAtyParam));
         } else {
             if (!mSaveAtyList.containsKey(targetAty)) {
-                mSaveAtyList.put(targetAty, mSaveAtyList.size() + SPLIT_KEY + (targetAtyParam == null ? "" : targetAtyParam));
+                mSaveAtyList.put(targetAty, new CacheInfo(
+                        String.valueOf(mSaveAtyList.size()),
+                        TextUtils.isEmpty(targetAtyParam) ? "" : targetAtyParam));
             }
         }
 
@@ -197,7 +199,7 @@ public class AtyStateUtil {
         return curCacheInfo;
     }
 
-    private LinkedHashMap<String, String> mRemoveAtyList;
+    private LinkedHashMap<String, CacheInfo> mRemoveAtyList;
 
     /**
      * 每个Activity onCreate时 清除 目标 Activity 主界面不清除
@@ -211,7 +213,7 @@ public class AtyStateUtil {
             if (!TextUtils.isEmpty(allAtyJson)) {
                 CacheInfo cacheInfo = JSONObject.parseObject(allAtyJson, CacheInfo.class);
                 if (cacheInfo != null && !TextUtils.isEmpty(cacheInfo.cacheData)) {
-                    mRemoveAtyList = JSON.parseObject(cacheInfo.cacheData, new TypeReference<LinkedHashMap<String, String>>() {
+                    mRemoveAtyList = JSON.parseObject(cacheInfo.cacheData, new TypeReference<LinkedHashMap<String, CacheInfo>>() {
                     }, Feature.OrderedField);
                 }
             }

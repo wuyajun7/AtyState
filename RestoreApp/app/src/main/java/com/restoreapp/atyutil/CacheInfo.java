@@ -7,8 +7,26 @@ import java.io.Serializable;
  */
 public class CacheInfo implements Serializable {
 
-    public long lastTime;
-    public String cacheData;
+    public String id;          //排序使用
+    public long lastTime;      //过期时间判断
+    public String cacheData;   //缓存的数据
+
+    public CacheInfo() {
+        super();
+    }
+
+    public CacheInfo(String id, String cacheData) {
+        this.id = id;
+        this.cacheData = cacheData;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
 
     public long getLastTime() {
         return lastTime;
@@ -27,6 +45,7 @@ public class CacheInfo implements Serializable {
     }
 
     public void clear() {
+        id = "";
         lastTime = 0;
         cacheData = "";
     }
