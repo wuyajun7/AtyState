@@ -1,7 +1,9 @@
 package com.restoreapp;
 
 import android.content.Intent;
+import android.os.BaseBundle;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -23,15 +25,10 @@ public class Text2Aty extends BaseActivity {
         post_id = getIntent().getIntExtra("post_id", -1);
         user_name = getIntent().getStringExtra("user_name");
 
-        setTargetParam(
-                new String[]{"post_id", "user_name"},
-                new Object[]{post_id, user_name}
-        );
-
         tip_tv = (TextView) findViewById(R.id.tip_tv);
         tip_tv.setText(this.getClass().getSimpleName() +
                 "\n| post_id: " + post_id +
-                "\n| user_name: " + user_name+
+                "\n| user_name: " + user_name +
                 "\n| 点击Home按键 杀掉进程 进入 跳转到本页");
 
         jump_btn = (Button) findViewById(R.id.jump_btn);
@@ -49,6 +46,15 @@ public class Text2Aty extends BaseActivity {
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
+        outState.putInt("post_id", post_id);
+        outState.putString("user_name", user_name);
+
+        Log.i("oppopopopopop", "" + outState.toString());
+
+        setTargetParam(
+                new String[]{"post_id", "user_name"},
+                new Object[]{post_id, user_name}
+        );
         AtyStateUtil.getInstance().saveTargetData(this.getClass().getCanonicalName(), mTargetParam);
     }
 }

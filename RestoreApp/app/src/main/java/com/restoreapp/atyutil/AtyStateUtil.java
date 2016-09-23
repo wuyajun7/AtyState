@@ -4,18 +4,19 @@ import android.app.Activity;
 import android.content.Intent;
 import android.os.Handler;
 import android.text.TextUtils;
-import android.util.Log;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
-import com.restoreapp.MainActivity;
-import com.restoreapp.MyApp;
+import com.alibaba.fastjson.parser.Feature;
+import com.restoreapp.NNApplication;
+import com.restoreapp.NNMainAty;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.ListIterator;
 import java.util.Map;
 
 /**
@@ -26,13 +27,14 @@ import java.util.Map;
 public class AtyStateUtil {
 
     private static final String TAG = "StateUtil";
+    private static final String SPLIT_KEY = "=-=";
+    private static final String SPLIT_KEY_SUPER = "-=-";
     private static final String SAVED_ATY_S = "SAVED_ATY_S";//目标Activity列表|参数
 
     private Intent mIntent;
 
     private String mSavedAtyJson;
     private LinkedHashMap<String, String> mSavedAtyList;
-
 
     private AtyStateUtil() {
     }
@@ -47,53 +49,109 @@ public class AtyStateUtil {
     }
 
     /**
+     * 排序
+     *
+     * @param oldMap
+     * @return
+     */
+    public static ArrayList sortMap(Map oldMap) {
+        ArrayList<Map.Entry<String, String>> list = new ArrayList<>(oldMap.entrySet());
+        Collections.sort(list, new Comparator<Map.Entry<String, String>>() {
+
+            @Override
+            public int compare(Map.Entry<String, String> arg0, Map.Entry<String, String> arg1) {
+                return arg0.getValue().compareTo(arg1.getValue());
+            }
+        });
+        return list;
+    }
+
+    /**
+     * 检测缓存数据时间
+     * 目前缓存保留 60 分钟
+     *
+     * @param lastTime
+     * @return
+     */
+    public boolean checkCacheTime(long lastTime) {
+        long time = 60l * 60l * 1000l;
+
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastTime > time) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * 主页 判断是否有目标Activity ，有判断目标Activity是不是自己，不是则跳转
      *
      * @param activity
      */
     public void jumpSavedActivity(final Activity activity) {
-        mSavedAtyJson = MyApp.asp.read(SAVED_ATY_S, "");
-        if (!TextUtils.isEmpty(mSavedAtyJson)) {
-            mSavedAtyList = JSON.parseObject(mSavedAtyJson, new TypeReference<LinkedHashMap<String, String>>() {
-            });
+        try {
+            mSavedAtyJson = NNApplication.asp.read(SAVED_ATY_S, "");
 
-            new Handler().postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    String targetAty;
-                    String targetAtyParamJson;
-                    Map<String, Object> targetAtyParam;
-                    Class targetClass;
+            if (!TextUtils.isEmpty(mSavedAtyJson)) {
+                String[] data = mSavedAtyJson.split(SPLIT_KEY_SUPER);
+                if (data != null && data.length > 1) {
+                    long time = Long.parseLong(data[0]);
+                    String activityJson = data[1];
 
-                    ListIterator<Map.Entry<String, String>> listIterator = new ArrayList<>(mSavedAtyList.entrySet())
-                            .listIterator(mSavedAtyList.size());
-                    while (listIterator.hasPrevious()) {
-                        Map.Entry<String, String> atyStateEntry = listIterator.previous();
+                    if (!checkCacheTime(time) && !TextUtils.isEmpty(activityJson)) {
+                        mSavedAtyList = JSON.parseObject(activityJson, new TypeReference<LinkedHashMap<String, String>>() {
+                        }, Feature.OrderedField);
+                        new Handler().postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                String targetAty;
+                                String targetAtyParamJson;
+                                Map<String, Object> targetAtyParam = null;
+                                Class targetClass;
 
-                        targetAty = atyStateEntry.getKey();
-                        targetAtyParamJson = atyStateEntry.getValue();
-                        targetAtyParam = JSON.parseObject(targetAtyParamJson);
+                                ArrayList<Map.Entry<String, String>> list = sortMap(mSavedAtyList);
+                                Map.Entry<String, String> item;
+                                for (int i = 0; i < list.size(); i++) {
+                                    item = list.get(i);
 
-                        if (targetAty != null) {
-                            try {
-                                if (!MainActivity.class.getCanonicalName().equals(targetAty)) {
-                                    targetClass = Class.forName(targetAty);
-                                    mIntent = new Intent(activity, targetClass);
-                                    if (targetAtyParam != null) {//目标Activity 参数不为空则设置参数
-                                        for (Map.Entry<String, Object> entry : targetAtyParam.entrySet()) {
-                                            setIntent(mIntent, entry);
+                                    targetAty = item.getKey();
+                                    targetAtyParamJson = item.getValue();
+                                    if (!TextUtils.isEmpty(targetAtyParamJson)) {
+                                        String[] params = targetAtyParamJson.split(SPLIT_KEY);
+                                        if (params != null && params.length > 1) {
+                                            targetAtyParamJson = params[1];
+                                            targetAtyParam = JSON.parseObject(targetAtyParamJson);
                                         }
                                     }
-                                    activity.startActivity(mIntent);
+
+                                    if (targetAty != null) {
+                                        try {
+                                            if (!NNMainAty.class.getCanonicalName().equals(targetAty)) {
+                                                targetClass = Class.forName(targetAty);
+                                                mIntent = new Intent(activity, targetClass);
+                                                if (targetAtyParam != null) {//目标Activity 参数不为空则设置参数
+                                                    for (Map.Entry<String, Object> entry : targetAtyParam.entrySet()) {
+                                                        setIntent(mIntent, entry);
+                                                    }
+                                                }
+                                                activity.startActivity(mIntent);
+                                            }
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
+                                        }
+                                    }
                                 }
-                            } catch (Exception e) {
-                                e.printStackTrace();
+                                NNApplication.asp.write(SAVED_ATY_S, "");
                             }
-                        }
+                        }, 500);
+                    } else {//数据过期
+                        NNApplication.asp.write(SAVED_ATY_S, "");
                     }
-                    MyApp.asp.write(SAVED_ATY_S, "");
                 }
-            }, 300);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            NNApplication.asp.write(SAVED_ATY_S, "");
         }
     }
 
@@ -105,24 +163,30 @@ public class AtyStateUtil {
      * @param targetAty
      */
     public void saveTargetData(String targetAty, String targetAtyParam) {
-        Log.i(TAG, "SAVE_ATY : " + targetAty);
-        String allAtyJson = MyApp.asp.read(SAVED_ATY_S, "");
+        String allAtyJson = NNApplication.asp.read(SAVED_ATY_S, "");
 
         if (!TextUtils.isEmpty(allAtyJson)) {
-            mSaveAtyList = JSON.parseObject(allAtyJson, new TypeReference<LinkedHashMap<String, String>>() {
-            });
+            String[] data = allAtyJson.split(SPLIT_KEY_SUPER);
+            if (data != null && data.length > 1) {
+                long time = Long.parseLong(data[0]);
+                String activityJson = data[1];
+
+                mSaveAtyList = JSON.parseObject(activityJson, new TypeReference<LinkedHashMap<String, String>>() {
+                }, Feature.OrderedField);
+            }
         }
 
         if (mSaveAtyList == null) {
             mSaveAtyList = new LinkedHashMap<>();
-            mSaveAtyList.put(targetAty, targetAtyParam == null ? "" : targetAtyParam);
+            mSaveAtyList.put(targetAty, mSaveAtyList.size() + SPLIT_KEY + (targetAtyParam == null ? "" : targetAtyParam));
         } else {
             if (!mSaveAtyList.containsKey(targetAty)) {
-                mSaveAtyList.put(targetAty, targetAtyParam == null ? "" : targetAtyParam);
+                mSaveAtyList.put(targetAty, mSaveAtyList.size() + SPLIT_KEY + (targetAtyParam == null ? "" : targetAtyParam));
             }
         }
 
-        MyApp.asp.write(SAVED_ATY_S, JSONObject.toJSON(mSaveAtyList).toString());
+        //存储数据时加时间戳
+        NNApplication.asp.write(SAVED_ATY_S, System.currentTimeMillis() + SPLIT_KEY_SUPER + JSONObject.toJSON(mSaveAtyList).toString());
     }
 
     private LinkedHashMap<String, String> mRemoveAtyList;
@@ -133,22 +197,28 @@ public class AtyStateUtil {
      * @param targetAty
      */
     public void removeTargetData(String targetAty) {
-        Log.i(TAG, "SAVE_ATY : doTargetActivityEmpty");
-        if (!MainActivity.class.getCanonicalName().equals(targetAty)) {
-            String allAtyJson = MyApp.asp.read(SAVED_ATY_S, "");
+        if (!NNMainAty.class.getCanonicalName().equals(targetAty)) {
+            String allAtyJson = NNApplication.asp.read(SAVED_ATY_S, "");
             if (!TextUtils.isEmpty(allAtyJson)) {
-                mRemoveAtyList = JSON.parseObject(allAtyJson, new TypeReference<LinkedHashMap<String, String>>() {
-                });
+                String[] data = allAtyJson.split(SPLIT_KEY_SUPER);
+                if (data != null && data.length > 1) {
+                    long time = Long.parseLong(data[0]);
+                    String activityJson = data[1];
+                    mRemoveAtyList = JSON.parseObject(activityJson, new TypeReference<LinkedHashMap<String, String>>() {
+                    }, Feature.OrderedField);
+                }
+
                 if (mRemoveAtyList != null && mRemoveAtyList.size() > 0) {
                     mRemoveAtyList.remove(targetAty);
+                    //存储数据时加时间戳
+                    NNApplication.asp.write(SAVED_ATY_S, System.currentTimeMillis() + SPLIT_KEY_SUPER + JSONObject.toJSON(mRemoveAtyList).toString());
                 }
-                MyApp.asp.write(SAVED_ATY_S, JSONObject.toJSON(mRemoveAtyList).toString());
             }
         }
     }
 
     public void clearAllData() {
-        MyApp.asp.write(SAVED_ATY_S, "");
+        NNApplication.asp.write(SAVED_ATY_S, "");
     }
 
     private Map<String, Object> atyParamMapTemp;

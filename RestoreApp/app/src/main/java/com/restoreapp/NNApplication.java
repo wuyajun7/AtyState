@@ -9,7 +9,7 @@ import com.restoreapp.sharedpreference.SharedPreferenceFactory;
 /**
  * Created by wuyajun on 16/8/2.
  */
-public class MyApp extends Application {
+public class NNApplication extends Application {
     /* 设置数据帮助类 */
     public static AbstractSharedPreference asp;
 

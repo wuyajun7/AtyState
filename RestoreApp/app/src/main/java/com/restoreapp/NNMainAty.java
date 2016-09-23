@@ -8,7 +8,7 @@ import android.widget.TextView;
 
 import com.restoreapp.atyutil.AtyStateUtil;
 
-public class MainActivity extends BaseActivity {
+public class NNMainAty extends BaseActivity {
 
     private TextView tip_tv;
     private Button jump_btn;
@@ -24,7 +24,7 @@ public class MainActivity extends BaseActivity {
         jump_btn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                startActivity(new Intent(MainActivity.this, Text1Aty.class));
+                startActivity(new Intent(NNMainAty.this, Text1Aty.class));
             }
         });
 

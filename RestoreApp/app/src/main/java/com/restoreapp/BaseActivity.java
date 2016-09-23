@@ -9,7 +9,7 @@ import com.restoreapp.atyutil.AtyStateUtil;
 /**
  * Created by wuyajun on 16/8/2.
  */
-public class BaseActivity extends Activity {
+public class BaseActivity extends SliderActivity {
 
     protected Intent intent;
 
