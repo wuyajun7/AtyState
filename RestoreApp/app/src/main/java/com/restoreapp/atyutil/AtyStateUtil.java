@@ -28,7 +28,6 @@ public class AtyStateUtil {
 
     private static final String TAG = "StateUtil";
     private static final String SPLIT_KEY = "=-=";
-    private static final String SPLIT_KEY_SUPER = "-=-";
     private static final String SAVED_ATY_S = "SAVED_ATY_S";//目标Activity列表|参数
 
     private Intent mIntent;
@@ -74,7 +73,7 @@ public class AtyStateUtil {
      * @return
      */
     public boolean checkCacheTime(long lastTime) {
-        long time = 60l * 60l * 1000l;
+        long time = /*60l * */60l * 1000l;
 
         long currentTime = System.currentTimeMillis();
         if (currentTime - lastTime > time) {
@@ -91,15 +90,12 @@ public class AtyStateUtil {
     public void jumpSavedActivity(final Activity activity) {
         try {
             mSavedAtyJson = NNApplication.asp.read(SAVED_ATY_S, "");
-
             if (!TextUtils.isEmpty(mSavedAtyJson)) {
-                String[] data = mSavedAtyJson.split(SPLIT_KEY_SUPER);
-                if (data != null && data.length > 1) {
-                    long time = Long.parseLong(data[0]);
-                    String activityJson = data[1];
+                CacheInfo cacheInfo = JSONObject.parseObject(mSavedAtyJson, CacheInfo.class);
 
-                    if (!checkCacheTime(time) && !TextUtils.isEmpty(activityJson)) {
-                        mSavedAtyList = JSON.parseObject(activityJson, new TypeReference<LinkedHashMap<String, String>>() {
+                if (cacheInfo != null) {
+                    if (!checkCacheTime(cacheInfo.lastTime) && !TextUtils.isEmpty(cacheInfo.cacheData)) {
+                        mSavedAtyList = JSON.parseObject(cacheInfo.cacheData, new TypeReference<LinkedHashMap<String, String>>() {
                         }, Feature.OrderedField);
                         new Handler().postDelayed(new Runnable() {
                             @Override
@@ -166,12 +162,9 @@ public class AtyStateUtil {
         String allAtyJson = NNApplication.asp.read(SAVED_ATY_S, "");
 
         if (!TextUtils.isEmpty(allAtyJson)) {
-            String[] data = allAtyJson.split(SPLIT_KEY_SUPER);
-            if (data != null && data.length > 1) {
-                long time = Long.parseLong(data[0]);
-                String activityJson = data[1];
-
-                mSaveAtyList = JSON.parseObject(activityJson, new TypeReference<LinkedHashMap<String, String>>() {
+            CacheInfo cacheInfo = JSONObject.parseObject(allAtyJson, CacheInfo.class);
+            if (cacheInfo != null && !TextUtils.isEmpty(cacheInfo.cacheData)) {
+                mSaveAtyList = JSON.parseObject(cacheInfo.cacheData, new TypeReference<LinkedHashMap<String, String>>() {
                 }, Feature.OrderedField);
             }
         }
@@ -185,8 +178,23 @@ public class AtyStateUtil {
             }
         }
 
-        //存储数据时加时间戳
-        NNApplication.asp.write(SAVED_ATY_S, System.currentTimeMillis() + SPLIT_KEY_SUPER + JSONObject.toJSON(mSaveAtyList).toString());
+        CacheInfo cacheInfo = getCacheInfo();
+        cacheInfo.setLastTime(System.currentTimeMillis());
+        cacheInfo.setCacheData(JSONObject.toJSON(mSaveAtyList).toString());
+
+        String cacheData = JSON.toJSONString(cacheInfo);
+        NNApplication.asp.write(SAVED_ATY_S, cacheData);
+    }
+
+    private CacheInfo curCacheInfo;
+
+    private CacheInfo getCacheInfo() {
+        if (curCacheInfo == null) {
+            curCacheInfo = new CacheInfo();
+        } else {
+            curCacheInfo.clear();
+        }
+        return curCacheInfo;
     }
 
     private LinkedHashMap<String, String> mRemoveAtyList;
@@ -198,21 +206,25 @@ public class AtyStateUtil {
      */
     public void removeTargetData(String targetAty) {
         if (!NNMainAty.class.getCanonicalName().equals(targetAty)) {
+
             String allAtyJson = NNApplication.asp.read(SAVED_ATY_S, "");
             if (!TextUtils.isEmpty(allAtyJson)) {
-                String[] data = allAtyJson.split(SPLIT_KEY_SUPER);
-                if (data != null && data.length > 1) {
-                    long time = Long.parseLong(data[0]);
-                    String activityJson = data[1];
-                    mRemoveAtyList = JSON.parseObject(activityJson, new TypeReference<LinkedHashMap<String, String>>() {
+                CacheInfo cacheInfo = JSONObject.parseObject(allAtyJson, CacheInfo.class);
+                if (cacheInfo != null && !TextUtils.isEmpty(cacheInfo.cacheData)) {
+                    mRemoveAtyList = JSON.parseObject(cacheInfo.cacheData, new TypeReference<LinkedHashMap<String, String>>() {
                     }, Feature.OrderedField);
                 }
+            }
 
-                if (mRemoveAtyList != null && mRemoveAtyList.size() > 0) {
-                    mRemoveAtyList.remove(targetAty);
-                    //存储数据时加时间戳
-                    NNApplication.asp.write(SAVED_ATY_S, System.currentTimeMillis() + SPLIT_KEY_SUPER + JSONObject.toJSON(mRemoveAtyList).toString());
-                }
+            if (mRemoveAtyList != null && mRemoveAtyList.size() > 0) {
+                mRemoveAtyList.remove(targetAty);
+
+                CacheInfo cacheInfo = getCacheInfo();
+                cacheInfo.setLastTime(System.currentTimeMillis());
+                cacheInfo.setCacheData(JSONObject.toJSON(mRemoveAtyList).toString());
+
+                String cacheData = JSON.toJSONString(cacheInfo);
+                NNApplication.asp.write(SAVED_ATY_S, cacheData);
             }
         }
     }
@@ -244,8 +256,6 @@ public class AtyStateUtil {
         return JSONObject.toJSON(atyParamMapTemp).toString();
     }
 
-    private Object param;
-
     /**
      * 设置目标Activity 参数
      *
@@ -253,7 +263,7 @@ public class AtyStateUtil {
      * @param entry
      */
     private void setIntent(Intent mIntent, Map.Entry<String, Object> entry) {
-        param = entry.getValue();
+        Object param = entry.getValue();
         if (param instanceof Integer) {
             int value = ((Integer) param).intValue();
             mIntent.putExtra(entry.getKey(), value);
@@ -274,4 +284,5 @@ public class AtyStateUtil {
             mIntent.putExtra(entry.getKey(), value);
         }
     }
+
 }
